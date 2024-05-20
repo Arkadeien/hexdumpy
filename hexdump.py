@@ -20,7 +20,7 @@ SEPARATOR = '|'
 # Just a empty byte.
 EMPTY_BYTE = b''
 
-HEX_PRINT_WIDTH = 40
+HEX_PRINT_WIDTH = 39
 
 def main():
     parser = argparse.ArgumentParser(prog='hexdump', epilog='Dumps file contents to the terminal in Location:hex | bytes:hex | bytes:ascii')
@@ -42,8 +42,7 @@ def main():
 def show_options_to_screen():
     print('Hexdumpy')
     print(f'Bytes per line : {CHUNK_SIZE}')
-    print(f'Ascii per line : {CHUNK_SIZE}')
-    print(f'{"Location":8} |{"Bytes":^41}|{"Ascii":^18}')
+    print(f'{"Location":9}|{"Bytes":^41}|{"Ascii":^19}')
 
 def hex2chr(byte_string):
     ''' Converts a string of hex values into a string of printable chrs'''
@@ -72,8 +71,8 @@ def hex_dump(src):
         chunk_string = src[i:i+CHUNK_SIZE].hex()
        
         location = f'0x{i:06X}'
-        ascii_string = section_string(hex2chr(src[i:i+CHUNK_SIZE]), ASCII_SECTION_SIZE)
-        hex_string = section_string(chunk_string, BYTE_SECTION_SIZE)
+        ascii_string = section_string(hex2chr(src[i:i+CHUNK_SIZE]), ASCII_GROUP_SIZE)
+        hex_string = section_string(chunk_string, BYTE_GROUP_SIZE)
        
         if chunk_string == EMPTY_BYTE or chunk_string == last_chunk and skipped:
             continue
@@ -82,7 +81,7 @@ def hex_dump(src):
             skipped = True
             continue
 
-        print(f'{location} | {hex_string:{HEX_PRINT_WIDTH}}| {ascii_string}')
+        print(f'{location} | {hex_string:{HEX_PRINT_WIDTH}} | {ascii_string}')
 
         last_chunk = chunk_string[:]
 
