@@ -36,17 +36,11 @@ def main():
     except Exception as e:
         print(f'[!] Could not read file! => {e}')
 
-    show_options_to_screen()
     hex_dump(file)
-
-def show_options_to_screen():
-    print('Hexdumpy')
-    print(f'Bytes per line : {CHUNK_SIZE}')
-    print(f'{"Location":9}|{"Bytes":^41}|{"Ascii":^19}')
 
 def hex2chr(byte_string):
     ''' Converts a string of hex values into a string of printable chrs'''
-    return ''.join([ chr(int(b)) if len(repr(chr(b))) == 3 else PLACEHOLDER for b in byte_string])
+    return ''.join([chr(int(b)) if len(repr(chr(b))) == 3 else PLACEHOLDER for b in byte_string])
 
 def section_string(string, sections):
     ''' Take a string and put spaces in between characters. 
