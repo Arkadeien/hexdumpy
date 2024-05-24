@@ -5,7 +5,6 @@
 
 import argparse
 
-
 # Bytes to grab for each line of a dump
 CHUNK_SIZE = 16
 
@@ -20,12 +19,12 @@ BYTE_FIELD_WIDTH = (CHUNK_SIZE*2) + int(CHUNK_SIZE/BYTE_GROUP_SIZE) - 1
 ASCII_FIELD_WIDTH = CHUNK_SIZE + int(CHUNK_SIZE/ASCII_GROUP_SIZE) - 1
 
 TOTAL_FIELD_WIDTH = LOCATION_FIELD_WIDTH + BYTE_FIELD_WIDTH + ASCII_FIELD_WIDTH + 4
-# What to print to screen if byte chunks repeat or empty byte.
 
 FIELD_LABEL = f'| location | {'offset':^{BYTE_FIELD_WIDTH}} | {'ascii':^{ASCII_FIELD_WIDTH}}|'
 
 OFFSET_LABEL = f'{'|':-<{LOCATION_FIELD_WIDTH+1}}| {''.join([f'{i:02X} ' for i in range(CHUNK_SIZE)]):{BYTE_FIELD_WIDTH}}|{'|':->{ASCII_FIELD_WIDTH+2}}'
 
+# What to print to screen if byte chunks repeat or empty byte.
 SKIP_SYMBOL = '*'
 
 EMPTY_BYTE = b''
@@ -52,16 +51,13 @@ def hex_dump(src):
         Unprintable values default to ".".
         If a chunk(s) of bytes repeat * is printed instead.
     '''
-    last_chunk = b''
-    skipped = False
-    
-
     print(FIELD_LABEL)   
     print(OFFSET_LABEL)
-
+    
+    last_chunk = b''
+    skipped = False
     for i in range(0,len(src), CHUNK_SIZE):
         chunk = src[i:i+CHUNK_SIZE]
-
         if chunk == EMPTY_BYTE or chunk == last_chunk and skipped:
             continue
         if chunk == last_chunk:
