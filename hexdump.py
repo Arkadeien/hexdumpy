@@ -4,97 +4,115 @@
 '''
 
 import argparse
+import sys
 
-# Bytes to grab for each line of a dump
+from typing import NamedTuple
+
 CHUNK_SIZE = 16
-
-BYTE_GROUP_SIZE = 1
-
-ASCII_GROUP_SIZE = 8
 
 LOCATION_FIELD_WIDTH = 10 
 
-BYTE_FIELD_WIDTH = (CHUNK_SIZE*2) + int(CHUNK_SIZE/BYTE_GROUP_SIZE) - 1
-
-ASCII_FIELD_WIDTH = CHUNK_SIZE + int(CHUNK_SIZE/ASCII_GROUP_SIZE) - 1
-
-FIELD_LABEL = f'| location | {'bytes/offset':^{BYTE_FIELD_WIDTH}} | {'ascii':^{ASCII_FIELD_WIDTH}}|'
-
-OFFSET_LABEL = f'{'|':-<{LOCATION_FIELD_WIDTH+1}}| {''.join([f'{i:02X} ' for i in range(CHUNK_SIZE)]):{BYTE_FIELD_WIDTH}}|{'|':->{ASCII_FIELD_WIDTH+2}}'
-
-# What to print to screen if byte chunks repeat or empty byte.
 SKIP_SYMBOL = '*'
 
-EMPTY_BYTE = b''
+DONT_PAUSE = -1
 
+# How many bytes are grouped together
+B_GROUP_SIZE = {"HEX":1,
+               "OCT":2,
+               "FULL":CHUNK_SIZE
+               }
+# How many characters are grouped together
+A_GROUP_SIZE = {"QUARTER":CHUNK_SIZE//4,
+               "HALF": CHUNK_SIZE//2,
+               "FULL":CHUNK_SIZE,
+               }
+
+class ByteChunk(NamedTuple):
+    bytes:bytes = b""
+    ascii:str = ""
+    location:int = 0
+    end_location:int = 0
 
 def main():
-    parser = argparse.ArgumentParser(prog='hexdump', epilog='Dumps file contents to the terminal as Location:hex | bytes:hex | bytes:ascii')
+    parser = argparse.ArgumentParser(prog="hexdump", epilog=f"Dumps file contents to the terminal. Repeated byte chunks are replaced by {SKIP_SYMBOL}. Multiple bytes chunks that repeat are shrotened to a single {SKIP_SYMBOL}.")
     
-    parser.add_argument('file', help='File to hexdump')
-    parser.add_argument('-o','--output-file',help='File to output dump to as csv', default='')
-
+    parser.add_argument("file_path", help="File to hexdump"),
+    parser.add_argument("-b", "--byte-option",
+                        help="Print bytes as octal '00FF'",
+                        choices=B_GROUP_SIZE.keys(),
+                        default="HEX"
+                        )
+    parser.add_argument("-a", "--ascii-option",
+                        help="Print ascii in two groups",
+                        choices=A_GROUP_SIZE.keys(),
+                        default="HALF"
+                        )
+    parser.add_argument("-s", "--skip", help="Bytes to skip", type=int, default=0)
+    parser.add_argument("-p", "--pause-every",
+                        type=int,
+                        help="Pauses dump n lines at a time. Waits <enter> press then continues",
+                        default=DONT_PAUSE
+                        )
+    parser.add_argument("--chunk_length",
+                        help="The amount of bytes read per chunk",
+                        default=CHUNK_SIZE
+                        )
+    
     args = parser.parse_args()
 
-    file = None
+    chunks = next_bytes(args.file_path, args.chunk_length, args.skip)
+    hexdump(chunks, args.byte_option, args.ascii_option, args.pause_every)
+
+def next_bytes(file_path:str, read_length:int, start) -> ByteChunk:
     try:
-        with open(args.file, 'rb') as f:
-            file = b''.join(f.readlines())
-    except Exception as e:
-        print(f'[!] Could not read file! => {e}')
+        with open(file_path, "rb") as f:
+            location = 0
+            chunk = b" "
+            if start:
+                f.seek(start)
 
-    dump = hexdump(file)
+            while chunk:     
+                chunk = f.read(read_length)
+                ascii = "".join([chr(b) if len(repr(chr(b))) == 3 else "." for b in chunk])
+                start = location
+                end = location + len(chunk)
+                location = end
+                if not chunk:
+                    break
+                yield ByteChunk(chunk, ascii, start, end)
     
-    if args.output_file != '':
-        try:
-            output_to_file(args.output_file, dump)
-        except Exception as e:
-            print(f'[!] Could not write to file! => {e}')            
+    except FileNotFoundError as e:
+        print(f"[!!] {e.strerror} => {file_path}")
 
-def hexdump(src:bytes) -> list[tuple[str, bytes, str]]:
-    ''' Dump hex values of src as location in hex, hex, ascii.
-        Unprintable values default to ".".
-        If a chunk(s) of by
-SKIP_SYMBOL = '*'tes repeat * is printed instead.
-    '''
-    print(FIELD_LABEL)   
-    print(OFFSET_LABEL)
-    
-    dumped_hex = []
-    last_chunk = b''
+        sys.exit(0)
+
+def hexdump(chunks:list[ByteChunk], byte_opt:str, ascii_opt:str, pause_every:int) -> None:
+    last_bytes = None
     skipped = False
-    for i in range(0,len(src), CHUNK_SIZE):
-        chunk = src[i:i+CHUNK_SIZE]
-        ascii_chunk = hex2chr(chunk)
-        
-        location = f'0x{i:07X}'
-        bytes_str = ''.join([f'{chunk[i:i+BYTE_GROUP_SIZE].hex()} ' for i in range(0, len(chunk), BYTE_GROUP_SIZE)]).strip()
-        ascii_str = ''.join([f'{ascii_chunk[i:i+ASCII_GROUP_SIZE]} ' for i in range(0,len(ascii_chunk),ASCII_GROUP_SIZE)]).strip()
-        
-        if chunk == EMPTY_BYTE or chunk == last_chunk and skipped:
-            continue
-        if chunk == last_chunk:
+    line = 0
+    byte_field_width = (CHUNK_SIZE*2) + CHUNK_SIZE//B_GROUP_SIZE[byte_opt] - 1 
+    for chunk in chunks:
+        if not pause_every == DONT_PAUSE and line%pause_every == 0 and chunk.location != 0:
+            print(line)
+            try:
+                input()
+            except KeyboardInterrupt:
+                print("[I] Exiting dump")
+                sys.exit(0)
+        if chunk.location != 0 and chunk.bytes == last_bytes and not skipped:
             print(SKIP_SYMBOL)
             skipped = True
             continue
+        if skipped and chunk.bytes == last_bytes:
+            continue
 
-        print(f' {location} | {bytes_str:{BYTE_FIELD_WIDTH}} | {ascii_str}')
-        
-        dumped_hex.append((location,chunk,ascii_chunk))
-        last_chunk = chunk[:]
+        bytes = " ".join(chunk.bytes[v:v+B_GROUP_SIZE[byte_opt]].hex() for v in range(0,len(chunk.bytes),B_GROUP_SIZE[byte_opt]))
+        ascii = " ".join(chunk.ascii[v:v+A_GROUP_SIZE[ascii_opt]] for v in range(0,len(chunk.ascii),A_GROUP_SIZE[ascii_opt]))
+        print(f"{chunk.location:#08x} {bytes:{byte_field_width}} {ascii}")
+        last_bytes = chunk.bytes
         skipped = False
-
-    return dumped_hex
-
-def hex2chr(byte_string):
-    ''' Converts a string of hex values into a string of printable chrs'''
-    return ''.join([chr(b) if len(repr(chr(b))) == 3 else '.' for b in byte_string])
-
-def output_to_file(file_path, data):
-    with open(file_path, 'w') as f:
-        f.write('location, bytes, ascii\n')
-        for line in data:
-            f.write(f'{line[0]},{line[1]},{line[2]}\n')
+        line += 1
 
 if __name__ == '__main__':
+    #test_hexdump() 
     main()
