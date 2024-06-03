@@ -16,16 +16,12 @@ SKIP_SYMBOL = '*'
 
 DONT_PAUSE = -1
 
-# How many bytes are grouped together
-B_GROUP_SIZE = {"HEX":1,
-               "OCT":2,
-               "FULL":CHUNK_SIZE
-               }
-# How many characters are grouped together
-A_GROUP_SIZE = {"QUARTER":CHUNK_SIZE//4,
-               "HALF": CHUNK_SIZE//2,
-               "FULL":CHUNK_SIZE,
-               }
+HEX_LEN = 1
+
+ASCII_LEN = CHUNK_SIZE//2
+
+BYTE_FIELD_WIDTH = (CHUNK_SIZE*2) + CHUNK_SIZE//HEX_LEN - 1 
+
 
 class ByteChunk(NamedTuple):
     bytes:bytes = b""
@@ -33,21 +29,19 @@ class ByteChunk(NamedTuple):
     location:int = 0
     end_location:int = 0
 
+
 def main():
     parser = argparse.ArgumentParser(prog="hexdump", epilog=f"Dumps file contents to the terminal. Repeated byte chunks are replaced by {SKIP_SYMBOL}. Multiple bytes chunks that repeat are shrotened to a single {SKIP_SYMBOL}.")
     
+    # Required arguments
     parser.add_argument("file_path", help="File to hexdump"),
-    parser.add_argument("-b", "--byte-option",
-                        help="Print bytes as octal '00FF'",
-                        choices=B_GROUP_SIZE.keys(),
-                        default="HEX"
+    
+    # Options
+    parser.add_argument("-s", "--skip",
+                        help="Bytes to skip",
+                        type=int,
+                        default=0
                         )
-    parser.add_argument("-a", "--ascii-option",
-                        help="Print ascii in two groups",
-                        choices=A_GROUP_SIZE.keys(),
-                        default="HALF"
-                        )
-    parser.add_argument("-s", "--skip", help="Bytes to skip", type=int, default=0)
     parser.add_argument("-p", "--pause-every",
                         type=int,
                         help="Pauses dump n lines at a time. Waits <enter> press then continues",
@@ -61,7 +55,7 @@ def main():
     args = parser.parse_args()
 
     chunks = next_bytes(args.file_path, args.chunk_length, args.skip)
-    hexdump(chunks, args.byte_option, args.ascii_option, args.pause_every)
+    hex_dump(chunks, args.pause_every)
 
 def next_bytes(file_path:str, read_length:int, start) -> ByteChunk:
     try:
@@ -70,7 +64,6 @@ def next_bytes(file_path:str, read_length:int, start) -> ByteChunk:
             chunk = b" "
             if start:
                 f.seek(start)
-
             while chunk:     
                 chunk = f.read(read_length)
                 ascii = "".join([chr(b) if len(repr(chr(b))) == 3 else "." for b in chunk])
@@ -86,14 +79,12 @@ def next_bytes(file_path:str, read_length:int, start) -> ByteChunk:
 
         sys.exit(0)
 
-def hexdump(chunks:list[ByteChunk], byte_opt:str, ascii_opt:str, pause_every:int) -> None:
+def hex_dump(chunks:list[ByteChunk], pause_every:int) -> None:
     last_bytes = None
     skipped = False
     line = 0
-    byte_field_width = (CHUNK_SIZE*2) + CHUNK_SIZE//B_GROUP_SIZE[byte_opt] - 1 
     for chunk in chunks:
         if not pause_every == DONT_PAUSE and line%pause_every == 0 and chunk.location != 0:
-            print(line)
             try:
                 input()
             except KeyboardInterrupt:
@@ -106,9 +97,9 @@ def hexdump(chunks:list[ByteChunk], byte_opt:str, ascii_opt:str, pause_every:int
         if skipped and chunk.bytes == last_bytes:
             continue
 
-        bytes = " ".join(chunk.bytes[v:v+B_GROUP_SIZE[byte_opt]].hex() for v in range(0,len(chunk.bytes),B_GROUP_SIZE[byte_opt]))
-        ascii = " ".join(chunk.ascii[v:v+A_GROUP_SIZE[ascii_opt]] for v in range(0,len(chunk.ascii),A_GROUP_SIZE[ascii_opt]))
-        print(f"{chunk.location:#08x} {bytes:{byte_field_width}} {ascii}")
+        bytes = " ".join(chunk.bytes[v:v+HEX_LEN].hex() for v in range(0,len(chunk.bytes),HEX_LEN))
+        ascii = " ".join(chunk.ascii[v:v+ASCII_LEN] for v in range(0,len(chunk.ascii),ASCII_LEN))
+        print(f"{chunk.location:#08x} | {bytes:{BYTE_FIELD_WIDTH}} | {ascii}")
         last_bytes = chunk.bytes
         skipped = False
         line += 1
